@@ -8,6 +8,76 @@ function showError(errorText) {
     errorElement.innerText = errorText;
     errorBoxDiv.appendChild(errorElement);
 }
+const trianglePositions = new Float32Array([0, 1, -1, -1, 1, -1]);
+const rgbTriangleColors = new Uint8Array([
+    255, 0, 0,
+    0, 255, 0,
+    0, 0, 255
+]);
+const fieryTriangleColors = new Uint8Array([
+    //Chili red = E52F0F   
+    229, 47, 15,
+    246, 206, 29,
+    233, 154, 26
+]);
+function createStaticVertexBufferMethod(gl, data) {
+    const buffer = gl.createBuffer();
+    if (!buffer) {
+        showError("Failed to allocate buffer");
+        return null;
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    return buffer;
+}
+function createTwoBufferVao(gl, positionBuffer, colorBuffer, positionAttribLocation, colorAttributeLocation) {
+    const vao = gl.createVertexArray();
+    if (!vao) {
+        showError('Failed to allocate VAO from 2 buffers');
+    }
+    gl.bindVertexArray(vao);
+    gl.enableVertexAttribArray(positionAttribLocation);
+    gl.enableVertexAttribArray(colorAttributeLocation);
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.vertexAttribPointer(positionAttribLocation, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    gl.vertexAttribPointer(colorAttributeLocation, 3, gl.UNSIGNED_BYTE, true, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.bindVertexArray(null);
+    return vao;
+}
+const vertexShaderSourceCode = `#version 300 es
+    precision mediump float;
+
+    in vec2 vertexPosition;
+    in vec3 vertexColor;
+
+    out vec3 fragmentColor;
+    
+
+
+    uniform vec2 canvasSize;
+    uniform vec2 shapeLocation;
+    uniform float shapeSize;
+
+    void main(){
+        fragmentColor = vertexColor;
+
+        vec2 finalVertexPosition = vertexPosition * shapeSize + shapeLocation;
+        vec2 clipPosition = (finalVertexPosition / canvasSize) * 2.0 - 1.0;
+        gl_Position = vec4(clipPosition, 0.0, 1.0);
+
+    }`;
+const fragmentShaderSourceCode = `#version 300 es
+    precision mediump float;
+
+    in vec3 fragmentColor;
+    out vec4 outputColor;
+
+    void main(){
+        outputColor = vec4(fragmentColor, 1.0);    
+    }`;
 function movementAndColor() {
     //Initializing the Web Gl canvas - catch error 
     /** @type {HTMLCanvasElement|null} */
@@ -23,36 +93,17 @@ function movementAndColor() {
     }
     //define data the GPU will use
     //Raw triangle
-    const triangleVertices = [
-        // top middle
-        0.0, 0.5,
-        // bottom left
-        -0.5, -0.5,
-        // bottom right
-        0.5, -0.5
-    ];
     //makes the triangle usable by GPU
-    const triangleVerticesCpuBuffer = new Float32Array(triangleVertices);
     //sending the buffer to gpu
-    const triangleGeoBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, triangleGeoBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, triangleVerticesCpuBuffer, gl.STATIC_DRAW);
-    //preparing vertex shader
-    const vertexShaderSourceCode = `#version 300 es
-    precision mediump float;
-
-    in vec2 vertexPosition;
-
-    uniform vec2 canvasSize;
-    uniform vec2 shapeLocation;
-    uniform float shapeSize;
-
-    void main(){
-        vec2 finalVertexPosition = vertexPosition * shapeSize + shapeLocation;
-        vec2 clipPosition = (finalVertexPosition / canvasSize) * 2.0 - 1.0;
-        gl_Position = vec4(clipPosition, 0.0, 1.0);
-
-    }`;
+    const triangleGeoBuffer = createStaticVertexBufferMethod(gl, trianglePositions);
+    const rgbTriangleColorBuffer = createStaticVertexBufferMethod(gl, rgbTriangleColors);
+    const fieryTriangleColorBuffer = createStaticVertexBufferMethod(gl, fieryTriangleColors);
+    if (!triangleGeoBuffer || !rgbTriangleColorBuffer || !fieryTriangleColorBuffer) {
+        showError(`Failed to create vertx buffers (triangle pos=${!!triangleGeoBuffer},`
+            + `rgb tri color = ${!!rgbTriangleColorBuffer},`
+            + `fiery tri color=${!!fieryTriangleColorBuffer})`);
+        return null;
+    }
     const vertexShader = gl.createShader(gl.VERTEX_SHADER);
     if (vertexShader === null) {
         showError('Could not allocate vertex shader');
@@ -66,14 +117,6 @@ function movementAndColor() {
         return;
     }
     //preparing fragment shader
-    const fragmentShaderSourceCode = `#version 300 es
-    precision mediump float;
-
-    out vec4 outputColor;
-
-    void main(){
-        outputColor = vec4(0.294, 0.0, 0.51, 1.0);    
-    }`;
     const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
     if (fragmentShader === null) {
         showError('Could not allocate fragment shader');
@@ -102,10 +145,13 @@ function movementAndColor() {
     }
     //get the vertex attrib positon to use vector
     const vertexPositionAttribLocation = gl.getAttribLocation(triangleShaderProgram, 'vertexPosition');
-    if (vertexPositionAttribLocation < 0) {
-        showError('Failed to get attrib location for vertexPosition');
+    const vertexColorAttributeLocation = gl.getAttribLocation(triangleShaderProgram, 'vertexColor');
+    if (vertexPositionAttribLocation < 0 || vertexColorAttributeLocation < 0) {
+        showError(`Failed to get attrib locations: (pos=${vertexPositionAttribLocation},`
+            + `color=${vertexColorAttributeLocation}`);
         return;
     }
+    //uniform location
     const shapeLocationUniform = gl.getUniformLocation(triangleShaderProgram, 'shapeLocation');
     const shapeSizeUniform = gl.getUniformLocation(triangleShaderProgram, 'shapeSize');
     const canvasSizeUniform = gl.getUniformLocation(triangleShaderProgram, 'canvasSize');
@@ -113,6 +159,14 @@ function movementAndColor() {
         showError(`Failed to get Uniform Locations (shapeLocation=${!!shapeLocationUniform}`
             + `, shapeSize = ${!!shapeSizeUniform}`
             + `, canvasSize = ${!!canvasSizeUniform}`);
+        return;
+    }
+    //create vaos
+    const rgbTriangleVao = createTwoBufferVao(gl, triangleGeoBuffer, rgbTriangleColorBuffer, vertexPositionAttribLocation, vertexColorAttributeLocation);
+    const fieryTriangleVao = createTwoBufferVao(gl, triangleGeoBuffer, fieryTriangleColorBuffer, vertexPositionAttribLocation, vertexColorAttributeLocation);
+    if (!rgbTriangleVao || !fieryTriangleVao) {
+        showError(`Failed to create VAOs: (`
+            + `rgbTriangle=${!!rgbTriangleVao}, `);
         return;
     }
     //PIPELINE
@@ -125,29 +179,16 @@ function movementAndColor() {
     gl.viewport(0, 0, canvas.width, canvas.height);
     //Set GPU program (vertex + fragment shader pair)
     gl.useProgram(triangleShaderProgram);
-    gl.enableVertexAttribArray(vertexPositionAttribLocation);
-    //Input Assembler - how to read vertices from our gpu to buffer
-    gl.bindBuffer(gl.ARRAY_BUFFER, triangleGeoBuffer);
-    gl.vertexAttribPointer(
-    /* index: which attribute to use  */
-    vertexPositionAttribLocation, 
-    /* size: how many components in that attriute */
-    2, 
-    /* type: what is the data stored in the GPU buffer? for this atribute?*/
-    gl.FLOAT, 
-    /* normalized: determines how to convert ints to floats, if that's what you're doing */
-    false, 
-    /*stride how forward to move between between bytes from one step to next*/
-    2 * Float32Array.BYTES_PER_ELEMENT, 
-    /*offset: how many bite should buffer skip */
-    0);
     gl.uniform2f(canvasSizeUniform, canvas.width, canvas.height);
-    //Draw call (configures primitive assembly)
+    //triangle 1
     gl.uniform1f(shapeSizeUniform, 200);
-    gl.uniform2f(shapeLocationUniform, 300, 400);
+    gl.uniform2f(shapeLocationUniform, 300, 600);
+    gl.bindVertexArray(rgbTriangleVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    //Triangle 2
     gl.uniform1f(shapeSizeUniform, 100);
     gl.uniform2f(shapeLocationUniform, 650, 300);
+    gl.bindVertexArray(fieryTriangleVao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 try {
