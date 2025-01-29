@@ -43,8 +43,15 @@ function movementAndColor() {
 
     in vec2 vertexPosition;
 
+    uniform vec2 canvasSize;
+    uniform vec2 shapeLocation;
+    uniform float shapeSize;
+
     void main(){
-        gl_Position = vec4(vertexPosition, 0.0, 1.0);
+        vec2 finalVertexPosition = vertexPosition * shapeSize + shapeLocation;
+        vec2 clipPosition = (finalVertexPosition / canvasSize) * 2.0 - 1.0;
+        gl_Position = vec4(clipPosition, 0.0, 1.0);
+
     }`;
     const vertexShader = gl.createShader(gl.VERTEX_SHADER);
     if (vertexShader === null) {
@@ -99,6 +106,15 @@ function movementAndColor() {
         showError('Failed to get attrib location for vertexPosition');
         return;
     }
+    const shapeLocationUniform = gl.getUniformLocation(triangleShaderProgram, 'shapeLocation');
+    const shapeSizeUniform = gl.getUniformLocation(triangleShaderProgram, 'shapeSize');
+    const canvasSizeUniform = gl.getUniformLocation(triangleShaderProgram, 'canvasSize');
+    if (shapeLocationUniform === null || shapeSizeUniform === null || canvasSizeUniform === null) {
+        showError(`Failed to get Uniform Locations (shapeLocation=${!!shapeLocationUniform}`
+            + `, shapeSize = ${!!shapeSizeUniform}`
+            + `, canvasSize = ${!!canvasSizeUniform}`);
+        return;
+    }
     //PIPELINE
     //Output merger - how to merge the shaded pixel fragment with the existing output image
     canvas.width = canvas.clientWidth;
@@ -125,7 +141,13 @@ function movementAndColor() {
     2 * Float32Array.BYTES_PER_ELEMENT, 
     /*offset: how many bite should buffer skip */
     0);
+    gl.uniform2f(canvasSizeUniform, canvas.width, canvas.height);
     //Draw call (configures primitive assembly)
+    gl.uniform1f(shapeSizeUniform, 200);
+    gl.uniform2f(shapeLocationUniform, 300, 400);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.uniform1f(shapeSizeUniform, 100);
+    gl.uniform2f(shapeLocationUniform, 650, 300);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 try {

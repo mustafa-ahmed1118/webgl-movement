@@ -18,7 +18,7 @@ function movementAndColor(){
         return;
     }
     const gl = canvas.getContext('webgl2');
-    if(!gl){
+    if(!gl){ 
         showError('This browser does not suppport Web Gl 2 - demo will no work!')
         return;
     }
@@ -49,8 +49,15 @@ function movementAndColor(){
 
     in vec2 vertexPosition;
 
+    uniform vec2 canvasSize;
+    uniform vec2 shapeLocation;
+    uniform float shapeSize;
+
     void main(){
-        gl_Position = vec4(vertexPosition, 0.0, 1.0);
+        vec2 finalVertexPosition = vertexPosition * shapeSize + shapeLocation;
+        vec2 clipPosition = (finalVertexPosition / canvasSize) * 2.0 - 1.0;
+        gl_Position = vec4(clipPosition, 0.0, 1.0);
+
     }`;
     const vertexShader = gl.createShader(gl.VERTEX_SHADER);
     if(vertexShader === null){
@@ -109,6 +116,17 @@ function movementAndColor(){
         return;
     }
 
+    const shapeLocationUniform = gl.getUniformLocation(triangleShaderProgram, 'shapeLocation');
+    const shapeSizeUniform = gl.getUniformLocation(triangleShaderProgram, 'shapeSize');
+    const canvasSizeUniform= gl.getUniformLocation(triangleShaderProgram, 'canvasSize');
+    if(shapeLocationUniform === null || shapeSizeUniform === null || canvasSizeUniform === null){
+        showError(`Failed to get Uniform Locations (shapeLocation=${!!shapeLocationUniform}` 
+        + `, shapeSize = ${!!shapeSizeUniform}`
+        + `, canvasSize = ${!!canvasSizeUniform}`);
+        return;
+    }
+
+
     //PIPELINE
 
     //Output merger - how to merge the shaded pixel fragment with the existing output image
@@ -141,8 +159,16 @@ function movementAndColor(){
         0
     );
 
+    gl.uniform2f(canvasSizeUniform, canvas.width, canvas.height);
+
     //Draw call (configures primitive assembly)
-    gl.drawArrays(gl.TRIANGLES, 0, 3,)
+    gl.uniform1f(shapeSizeUniform, 200);
+    gl.uniform2f(shapeLocationUniform, 300, 400);
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
+
+    gl.uniform1f(shapeSizeUniform, 100);
+    gl.uniform2f(shapeLocationUniform, 650, 300);
+    gl.drawArrays(gl.TRIANGLES, 0, 3)
 }
 try{
     movementAndColor();
